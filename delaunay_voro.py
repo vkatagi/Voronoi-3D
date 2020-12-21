@@ -21,7 +21,7 @@ class Triangle:
         ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
         uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
         self.circum = [ux, uy]
-        self.circum_radius = np.linalg.norm(self.vert[0] - self.circum)
+        self.circum_radius = np.linalg.norm(self.vert[0].p - self.circum)
 
     def sharesEdgeWith(self, other):
         count = 0
@@ -32,6 +32,16 @@ class Triangle:
 
     def vertexInCircum(self, vert):
         return np.linalg.norm(vert.p - self.circum) < self.circum_radius
+
+    # Returns neighboring triangles set. (All triangles that share an edge with this one)
+    def neighbors(self):
+        # PERF: can be optimized
+        result = set()
+        for vtx in self.vert:
+            for adj in vtx.adj:
+                if adj is not self and self.sharesEdgeWith(adj):
+                    result.add(adj)
+        return result;
 
 class Edge:
     def __init__(self, p0, p1):
@@ -45,10 +55,66 @@ class Edge:
         return False
 
 
-class Voronoi:
-    def __init__(self, points):
-        self.points = points
+def findPolygon(badTriangles):
+    # PERF: can be optimized a lot
+    all_edges = []
+    for tri in badTriangles:
+        all_edges.append(Edge(tri.vert[0], tri.vert[1]))
+        all_edges.append(Edge(tri.vert[1], tri.vert[2]))
+        all_edges.append(Edge(tri.vert[2], tri.vert[0]))
+    
+    edges = []
+    for edge in all_edges:
+        found = 0
+        for tested in all_edges:
+            if tested == edge:
+                found += 1
+                if found > 1:
+                    break
+        if found == 1:
+            edges.append(edge)
+
+    return edges
+
+
+def triangulate(points):
+    verts = []
+    for p in points:
+        verts.append(Vertex(p))
+    
+    # super triangle
+    verts.append(Vertex([1000, 0]))
+    verts.append(Vertex([0, 1000]))
+    verts.append(Vertex([0, 0]))
+
+    triangles = set()
+    triangles.add(Triangle(verts[-3], verts[-2], verts[-1]))
+
+    for vtx in verts:
+        # Find bad triangles, (all the triangles that vtx is inside of the circumcircle)
+        bad = set(filter(lambda tri: (tri.vertexInCircum(vtx)), triangles))
+
+        # Find polygonal hole from bad triangles
+        polygon = findPolygon(bad)
+
+        # Remove bad triangles from triangulation
+        for tri in bad:
+            for triVtx in tri.vert:
+                triVtx.adj.remove(tri)
+            triangles.remove(tri)
+
+        for edge in polygon:
+            # assumes all edges are valid (non points)
+            triangles.add(Triangle(vtx, edge.vert[0], edge.vert[1]))
+    
+    return triangles
         
+def voronoi(triangulation):
+    edges = []
+    for tri in triangulation:
+        for neighbor in tri.neighbors():
+            edges.append(Edge(tri.circum, neighbor.circum))
+    return edges 
 
 
 
@@ -59,51 +125,43 @@ class Voronoi:
 # imported later. these are only used for plotting & drawing
 import scipy as sp
 import scipy.spatial
-# import pylab
 import matplotlib.pyplot as plt
 import matplotlib.collections
 
-def test():
-    tri = Triangle([-1,0], [0,1], [1, 0])
+def get_cmap(n, name='hsv'):
+    return plt.cm.get_cmap(name, n)
 
-
-    circle = plt.Circle(tri.circumcenter(), tri.circumradius())
-
-    fig, ax = plt.subplots()
+def plot_tris(triangles):
+    cmap = get_cmap(len(triangles))
     
-    ax.add_artist(circle)
-    ax.set_aspect('equal','box')
-    plt.show()
-
+    for i, tri in enumerate(triangles):
+        pts = [tri.vert[0].p, tri.vert[1].p, tri.vert[2].p]
+        t = plt.Polygon(pts, True, color=cmap(i))
+        plt.gca().add_patch(t)
 
 def main():
-    test()
-    return
-
     points = [[0, 0], [3.2, 1.4], [3.1, 5], [2.7, 4.1], [2.9, 1], [1, 3], [5, 5], [4.6, 2.1]]
-    v = Voronoi(points)
+    
+    triangles = triangulate(points)
+    #plot_tris(triangles)
+
+    voro_edges = voronoi(triangles)
     
     lines = []
-    
-    for seg in v.segments:
-        lines.append([(seg.start.x, seg.start.y), (seg.end.x, seg.end.y)])
-
-    lines.append([(0, 0), (1, 1)])
-    
+    for edge in voro_edges:
+        lines.append(edge.vert)
     lc = matplotlib.collections.LineCollection(lines, linewidths=2)
     fig, ax = plt.subplots()
     ax.add_collection(lc)
-    x,y = np.array(points).T
+
     plt.xlim([-0.5,5.5])
     plt.ylim([-0.5,5.5])
-    plt.scatter(x, y)
-
-
 
     vor = sp.spatial.Voronoi(points)
     fig = sp.spatial.voronoi_plot_2d(vor)
 
     plt.show()
+    return
 
 
 if __name__ == "__main__":
