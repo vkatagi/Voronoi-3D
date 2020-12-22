@@ -1,0 +1,54 @@
+list<Tetra> delunay;
+
+delunay.add(superTetra);
+
+for point : points:
+	bad := empty
+	
+	for tetra : delunay: 
+		if point in_sphere(tetra):
+			bad.add(tetra)
+			
+	
+	for badTetra : bad:
+		delunay.remove(badTetra)
+
+	polyhedron := empty
+	
+	for badTetra : bad:
+		for face : badTetra:
+			
+			if face not_shared(bad):
+				polyhedron.add(face)
+	
+	
+	for face in polyhedron:
+		newTetra: {face, point}
+		UpdateAdj(newTetra);
+		delunay.add(newTetra)
+		
+for tetra : delunay:
+	if tetra shares_vtx(superTetra):
+		delunay.remove(tetra)
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+======================================================================================================
+======================================================================================================
+======================================================================================================
+======================================================================================================
