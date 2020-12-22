@@ -3,27 +3,42 @@ import numpy as np
 class Vertex:
     def __init__(self, p):
         self.p = np.array(p)
-        self.adj = set() # adjacent triangles
+        self.adj = set() # adjacent tetrahedrons
 
-class Triangle:
-    def __init__(self, p0, p1, p2):
-        self.vert = [p0, p1, p2]
+class Tetrahedron:
+    def __init__(self, p0, p1, p2, p3):
+        self.vert = [p0, p1, p2, p3]
         for vert in self.vert:
             vert.adj.add(self)
         self.updateCircum();
 
     def updateCircum(self):
-        ax = self.vert[0].p[0]; ay = self.vert[0].p[1]
-        bx = self.vert[1].p[0]; by = self.vert[1].p[1]
-        cx = self.vert[2].p[0]; cy = self.vert[2].p[1]
+        points = [vtx.p for vtx in self.vert]
+        pts = points[1:] - points[0]
 
-        d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-        ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
-        uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
-        self.circum = [ux, uy]
+        (x1, y1, z1), (x2, y2, z2), (x3, y3, z3) = pts
+
+        l1 = x1 * x1 + y1 * y1 + z1 * z1
+        l2 = x2 * x2 + y2 * y2 + z2 * z2
+        l3 = x3 * x3 + y3 * y3 + z3 * z3
+
+        # Compute determinants:
+        dx = +l1 * (y2 * z3 - z2 * y3) - l2 * (y1 * z3 - z1 * y3) + l3 * (y1 * z2 - z1 * y2)
+        dy = +l1 * (x2 * z3 - z2 * x3) - l2 * (x1 * z3 - z1 * x3) + l3 * (x1 * z2 - z1 * x2)
+        dz = +l1 * (x2 * y3 - y2 * x3) - l2 * (x1 * y3 - y1 * x3) + l3 * (x1 * y2 - y1 * x2)
+        aa = +x1 * (y2 * z3 - z2 * y3) - x2 * (y1 * z3 - z1 * y3) + x3 * (y1 * z2 - z1 * y2)
+        a = 2 * aa
+
+        center = (dx / a, -dy / a, dz / a)
+        self.circum = np.array([
+            center[0] + points[0][0],
+            center[1] + points[0][1],
+            center[2] + points[0][2],
+        ])
         self.circum_radius = np.linalg.norm(self.vert[0].p - self.circum)
 
-    def sharesEdgeWith(self, other):
+    def sharesFaceWith(self, other):
+        # TODO:
         count = 0
         for vert in self.vert:
             if vert in other.vert:
@@ -35,6 +50,7 @@ class Triangle:
 
     # Returns neighboring triangles set. (All triangles that share an edge with this one)
     def neighbors(self):
+        # TODO: 3d
         # PERF: can be optimized
         result = set()
         for vtx in self.vert:
@@ -53,6 +69,7 @@ class Edge:
             if self.vert[1] == other.vert[0] or self.vert[1] == other.vert[1]:
                 return True
         return False
+
 
 
 def findPolygon(badTriangles):
@@ -127,39 +144,49 @@ import scipy as sp
 import scipy.spatial
 import matplotlib.pyplot as plt
 import matplotlib.collections
+from mpl_toolkits.mplot3d import Axes3D 
 
-def get_cmap(n, name='hsv'):
-    return plt.cm.get_cmap(name, n)
-
-def plot_tris(triangles):
-    cmap = get_cmap(len(triangles))
-    
-    for i, tri in enumerate(triangles):
-        pts = [tri.vert[0].p, tri.vert[1].p, tri.vert[2].p]
-        t = plt.Polygon(pts, True, color=cmap(i))
-        plt.gca().add_patch(t)
 
 def main():
-    points = [[0, 0], [3.2, 1.4], [3.1, 5], [2.7, 4.1], [2.9, 1], [1, 3], [5, 5], [4.6, 2.1]]
+    tetr = Tetrahedron(
+        Vertex([0, 0, 0]), 
+        Vertex([2, 0, 0]), 
+        Vertex([1, 1, 0]), 
+        Vertex([1, 0, 1])
+    )
+
+
+    return
+    points = np.array([[0, 0, 0], [3.2, 1.4, 0.1] , [3.1, 5, 2], [2.7, 4.1, 1], [2.9, 1, 1.1], [1, 3, 3.4], [5, 5, 1], [4.6, 2.1, 4]])
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
     
-    triangles = triangulate(points)
+    print(points[:,0]);
 
-    voro_edges = voronoi(triangles)
-    
-    lines = []
-    for edge in voro_edges:
-        lines.append(edge.vert)
-    lc = matplotlib.collections.LineCollection(lines, linewidths=2)
-    fig, ax = plt.subplots()
-    ax.add_collection(lc)
-
-    plt.xlim([-0.5,5.5])
-    plt.ylim([-0.5,5.5])
-
-    vor = sp.spatial.Voronoi(points)
-    fig = sp.spatial.voronoi_plot_2d(vor)
-
+    ax.scatter(points[:,0], points[:,1], points[:,2])
     plt.show()
+
+
+    # triangles = triangulate(points)
+    return
+
+    # voro_edges = voronoi(triangles)
+    
+    # lines = []
+    # for edge in voro_edges:
+    #     lines.append(edge.vert)
+    # lc = matplotlib.collections.LineCollection(lines, linewidths=2)
+    # fig, ax = plt.subplots()
+    # ax.add_collection(lc)
+
+    # plt.xlim([-0.5,5.5])
+    # plt.ylim([-0.5,5.5])
+
+    # vor = sp.spatial.Voronoi(points)
+    # fig = sp.spatial.voronoi_plot_2d(vor)
+
+    # plt.show()
     return
 
 
