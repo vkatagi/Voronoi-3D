@@ -31,13 +31,52 @@ for tetra : delunay:
 	if tetra shares_vtx(superTetra):
 		delunay.remove(tetra)
 		
+
+########################
+#### VORO 3D ###########
+########################
+
+for point in del:
+	make voro convex
+	for edge connected to point:
+		convex.add(make voro face)
+
+
+voro_face(edge):
+	poly := empty
+	for tetra containing edge:
+		poly.add(tetra.circum)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+voronoi_face(adjTetras, edge, pointWeBuildAround, faceOfGeneratedConvex):
+	poly := empty 3d_face()
+
+	curTetra = adjTetras[0]
+	poly.add_point(curTetra)
+
+	for face in curTetra:
+		if edge in face:
+			
 		
-		
-		
-		
-		
-		
-		
+
+
 		
 		
 		

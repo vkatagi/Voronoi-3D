@@ -29,6 +29,9 @@ class Tetrahedron:
         aa = +x1 * (y2 * z3 - z2 * y3) - x2 * (y1 * z3 - z1 * y3) + x3 * (y1 * z2 - z1 * y2)
         a = 2 * aa
 
+        if a == 0:
+            print("A was 0")
+
         center = (dx / a, -dy / a, dz / a)
         self.circum = np.array([
             center[0] + points[0][0],
@@ -83,20 +86,21 @@ def findPolyhedron(badTetras):
 
     return faces
 
-def triangulate(points):
+def triangulate(points, superSize = 50, removeSuper = False):
     verts = []
     for p in points:
         verts.append(Vertex(p))
     
     # super polyhedron
-    d = 100
+    d = superSize
     verts.append(Vertex([d, 0, 0]))
     verts.append(Vertex([0, d, 0]))
     verts.append(Vertex([0, 0, d]))
     verts.append(Vertex([0, 0, 0]))
 
+    superTetra = Tetrahedron(verts[-4], verts[-3], verts[-2], verts[-1])
     delaunay = set()
-    delaunay.add(Tetrahedron(verts[-4], verts[-3], verts[-2], verts[-1]))
+    delaunay.add(superTetra)
 
     for vtx in verts:
         # Find bad tetrahedrons
@@ -114,21 +118,81 @@ def triangulate(points):
         for face in polyhedron:
             delaunay.add(Tetrahedron(face.vert[0], face.vert[1], face.vert[2], vtx))
 
-    superTetras = set()
-    for vert in verts[-4:]:
-        superTetras = superTetras.union(vert.adj)
-    
-    for tetra in superTetras:
-        delaunay.remove(tetra)
-
-    return delaunay
+    if removeSuper:
+        superTetras = set()
+        for vert in verts[-4:]:
+            superTetras = superTetras.union(vert.adj)
         
-def voronoi(triangulation):
-    edges = []
-    for tri in triangulation:
-        for neighbor in tri.neighbors():
-            edges.append(Edge(tri.circum, neighbor.circum))
-    return edges 
+        for tetra in superTetras:
+            delaunay.remove(tetra)
+
+    return (delaunay, superTetra)
+
+#
+# Voronoi
+#
+
+class Polyface:
+    def __init__(self):
+        self.points = []
+        self.lines = []
+    
+    def add(self, p):
+        self.points.append(p);
+        if len(self.points) > 1:
+            self.lines.append([self.points[-2], self.points[-1]])
+
+class Edge:
+    def __init__(self, v0, v1):
+        if v0.p[0] > v1.p[0]: # Have explicit ordering to determine uniqueness
+            v0, v1 = v1, v0
+        self.vtx = [v0, v1]
+
+    def __eq__(self, other):
+        return self.vtx[0] == other.vtx[0] and self.vtx[1] == other.vtx[1]
+
+    def __hash__(self):
+        return hash((self.vtx[0], self.vtx[1]))
+
+def voronoi(delaunay, superTetra):
+    edges = collections.defaultdict(Edge) # Unique delaunay edges
+    
+    for tetra in delaunay:
+        if tetra.sharesFaceWith(superTetra):
+            continue
+        if m.isnan(tetra.circum_radius):
+            continue
+        edges.setdefault(Edge(tetra.vert[0], tetra.vert[1]), set()).add(tetra)
+        edges.setdefault(Edge(tetra.vert[0], tetra.vert[2]), set()).add(tetra)
+        edges.setdefault(Edge(tetra.vert[0], tetra.vert[3]), set()).add(tetra)
+        edges.setdefault(Edge(tetra.vert[1], tetra.vert[3]), set()).add(tetra)
+        edges.setdefault(Edge(tetra.vert[1], tetra.vert[2]), set()).add(tetra)
+        edges.setdefault(Edge(tetra.vert[2], tetra.vert[3]), set()).add(tetra)
+
+    # make a poly face for each edge
+    voro = []
+    for edge, tetras in edges.items():
+        face = Polyface()
+        
+        # iterate all tetrahedrons around this edge and add their circumcenters as points
+        # we check for adjacency to form the proper polygon
+        current = tetras.pop()
+        face.add(current.circum)
+
+        while len(tetras) > 0:
+            for tetra in tetras:
+                if tetra.sharesFaceWith(current):
+                    current = tetra
+                    face.add(current.circum)
+                    break;
+            try: tetras.remove(current)
+            except: break
+            
+        voro.append(face)
+
+
+
+    return voro 
 
 # imports. these are only used for plotting & drawing
 import scipy as sp
@@ -138,11 +202,32 @@ import matplotlib.collections
 from mpl_toolkits.mplot3d import Axes3D 
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from itertools import chain
+import collections
+import math as m
 
 ##
 ## Driver
 ##
 
+def plot_delu(delu, ax):
+    lines = []
+    for tetra in delu:
+        lines.append((tetra.vert[0].p, tetra.vert[1].p))
+        lines.append((tetra.vert[0].p, tetra.vert[2].p))
+        lines.append((tetra.vert[0].p, tetra.vert[3].p))
+        lines.append((tetra.vert[1].p, tetra.vert[3].p))
+        lines.append((tetra.vert[1].p, tetra.vert[2].p))
+        lines.append((tetra.vert[2].p, tetra.vert[3].p))
+    for a, b in lines:
+        ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
+
+def plot_voro_lines(voro, ax):
+    for poly in voro:
+        for a, b in poly.lines:
+            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
+
+    
+    
 def main():
 
     # tetr = Tetrahedron(
@@ -152,54 +237,34 @@ def main():
     #     Vertex([1, 0, 1])
     # )
 
-    points = np.array([[0.1, 0.1, 0.1], [3.2, 1.4, 0.1] , [3.1, 5, 2], [2.7, 4.1, 1], [2.9, 1, 1.1], [1, 3, 3.4], [5, 5, 1], [4.6, 2.1, 4]])
+    #points = np.array([[0.1, 0.1, 0.1], [3.2, 1.4, 0.1] , [3.1, 5, 2], [2.7, 4.1, 1], [2.9, 1, 1.1], [1, 3, 3.4], [5, 5, 1], [4.6, 2.1, 4]])
+    points = np.array([[0.1, 0.1, 0.1], [4.2, 2.2, 4.2], [1, 3.0, 4.2], [2.7, 4.1, 1]])
 
-    delu = triangulate(points)
+    delu, superTetra = triangulate(points, removeSuper = False, superSize = 10)
+
+    voro = voronoi(delu, superTetra)
+
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(points[:,0], points[:,1], points[:,2])
 
-    lines = []
-    for tetra in delu:
-        lines.append((tetra.vert[0].p, tetra.vert[1].p))
-        lines.append((tetra.vert[0].p, tetra.vert[2].p))
-        lines.append((tetra.vert[0].p, tetra.vert[3].p))
-        lines.append((tetra.vert[1].p, tetra.vert[3].p))
-        lines.append((tetra.vert[1].p, tetra.vert[2].p))
-        lines.append((tetra.vert[2].p, tetra.vert[3].p))
+    #plot_delu(delu, ax)
+
+    plot_voro_lines(voro, ax)
+    for poly in voro:
+        for a, b in poly.lines:
+            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
         
-    for a, b in lines:
-        ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
+    ax.set_xlim(min(points[:,0]), max(points[:,0]))
+    ax.set_ylim(min(points[:,1]), max(points[:,1]))
+    ax.set_zlim(min(points[:,2]), max(points[:,2]))
+
 
     plt.show()
 
     return
 
-    
-
-
-
-    # triangles = triangulate(points)
-    return
-
-    # voro_edges = voronoi(triangles)
-    
-    # lines = []
-    # for edge in voro_edges:
-    #     lines.append(edge.vert)
-    # lc = matplotlib.collections.LineCollection(lines, linewidths=2)
-    # fig, ax = plt.subplots()
-    # ax.add_collection(lc)
-
-    # plt.xlim([-0.5,5.5])
-    # plt.ylim([-0.5,5.5])
-
-    # vor = sp.spatial.Voronoi(points)
-    # fig = sp.spatial.voronoi_plot_2d(vor)
-
-    # plt.show()
-    return
 
 
 if __name__ == "__main__":
