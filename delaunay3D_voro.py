@@ -4,13 +4,19 @@ class Vertex:
     def __init__(self, p):
         self.p = np.array(p)
         self.adj = set() # adjacent tetrahedrons
+    
+    def __repr__(self):
+        r = "["
+        for p in self.p: 
+            r += "{0: >4.1f} - ".format(p)
+        return r[:-3] + "]"
 
 class Tetrahedron:
     def __init__(self, p0, p1, p2, p3):
         self.vert = [p0, p1, p2, p3]
         for vert in self.vert:
             vert.adj.add(self)
-        self.updateCircum();
+        self.updateCircum()
 
     def updateCircum(self):
         points = [vtx.p for vtx in self.vert]
@@ -30,7 +36,7 @@ class Tetrahedron:
         a = 2 * aa
 
         if a == 0:
-            print("A was 0")
+            print("Found tetra with line: " + repr(self))
 
         center = (dx / a, -dy / a, dz / a)
         self.circum = np.array([
@@ -46,6 +52,11 @@ class Tetrahedron:
     def sharesFaceWith(self, other):
         return len(set(self.vert).intersection(other.vert)) >= 3
 
+    def __repr__(self):
+        r = "Tetra: "
+        for v in self.vert:
+            r += "{:>14} ".format(str(v))
+        return r
     # Returns neighboring triangles set. (All triangles that share an edge with this one)
     # def neighbors(self):
     #     # TODO: 3d
@@ -86,6 +97,7 @@ def findPolyhedron(badTetras):
 
     return faces
 
+            
 def triangulate(points, superSize = 50, removeSuper = False):
     verts = []
     for p in points:
@@ -102,7 +114,8 @@ def triangulate(points, superSize = 50, removeSuper = False):
     delaunay = set()
     delaunay.add(superTetra)
 
-    for vtx in verts:
+    # Skip super tetrahedron points
+    for vtx in verts[:-4]:
         # Find bad tetrahedrons
         bad = set(filter(lambda tetr: (tetr.vertexInCircum(vtx)), delaunay))
 
@@ -118,15 +131,18 @@ def triangulate(points, superSize = 50, removeSuper = False):
         for face in polyhedron:
             delaunay.add(Tetrahedron(face.vert[0], face.vert[1], face.vert[2], vtx))
 
-    if removeSuper:
-        superTetras = set()
-        for vert in verts[-4:]:
-            superTetras = superTetras.union(vert.adj)
-        
-        for tetra in superTetras:
-            delaunay.remove(tetra)
+    return (delaunay, verts, superTetra)
 
-    return (delaunay, superTetra)
+
+def remove_super(delaunay, verts, superTetra):
+    superTetras = set()
+    for vert in verts[-4:]:
+        for tetr in vert.adj:
+            superTetras.add(tetr)
+    
+    for tetra in superTetras:
+        delaunay.remove(tetra)
+
 
 #
 # Voronoi
@@ -138,7 +154,7 @@ class Polyface:
         self.lines = []
     
     def add(self, p):
-        self.points.append(p);
+        self.points.append(p)
         if len(self.points) > 1:
             self.lines.append([self.points[-2], self.points[-1]])
 
@@ -158,10 +174,6 @@ def voronoi(delaunay, superTetra):
     edges = collections.defaultdict(Edge) # Unique delaunay edges
     
     for tetra in delaunay:
-        if tetra.sharesFaceWith(superTetra):
-            continue
-        if m.isnan(tetra.circum_radius):
-            continue
         edges.setdefault(Edge(tetra.vert[0], tetra.vert[1]), set()).add(tetra)
         edges.setdefault(Edge(tetra.vert[0], tetra.vert[2]), set()).add(tetra)
         edges.setdefault(Edge(tetra.vert[0], tetra.vert[3]), set()).add(tetra)
@@ -184,7 +196,7 @@ def voronoi(delaunay, superTetra):
                 if tetra.sharesFaceWith(current):
                     current = tetra
                     face.add(current.circum)
-                    break;
+                    break
             try: tetras.remove(current)
             except: break
             
@@ -209,7 +221,7 @@ import math as m
 ## Driver
 ##
 
-def plot_delu(delu, ax):
+def plot_delu(delu, superSize, ax):
     lines = []
     for tetra in delu:
         lines.append((tetra.vert[0].p, tetra.vert[1].p))
@@ -218,7 +230,19 @@ def plot_delu(delu, ax):
         lines.append((tetra.vert[1].p, tetra.vert[3].p))
         lines.append((tetra.vert[1].p, tetra.vert[2].p))
         lines.append((tetra.vert[2].p, tetra.vert[3].p))
-    for a, b in lines:
+
+
+    if superSize > 0:
+        # Remove lines that have at least one point in super tetrahedron
+        isSuper = lambda coord : coord <= 0.001 or coord >= superSize - 0.001
+        lines_filtered = []
+        for p1, p2 in lines:
+            if not (isSuper(p1[0]) or isSuper(p1[1]) or isSuper(p1[2]) or isSuper(p2[0]) or isSuper(p2[1]) or isSuper(p2[2])):
+                lines_filtered.append((p1,p2))
+    else:
+        lines_filtered = lines
+    
+    for a, b in lines_filtered:
         ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
 
 def plot_voro_lines(voro, ax):
@@ -229,33 +253,30 @@ def plot_voro_lines(voro, ax):
     
     
 def main():
-
-    # tetr = Tetrahedron(
-    #     Vertex([0, 0, 0]), 
-    #     Vertex([2, 0, 0]), 
-    #     Vertex([1, 1, 0]), 
-    #     Vertex([1, 0, 1])
-    # )
+    SUPER_SIZE = 15 # How big is the edge of the super tetrahedron. Depends on input set but not calculated automatically
 
     #points = np.array([[0.1, 0.1, 0.1], [3.2, 1.4, 0.1] , [3.1, 5, 2], [2.7, 4.1, 1], [2.9, 1, 1.1], [1, 3, 3.4], [5, 5, 1], [4.6, 2.1, 4]])
-    points = np.array([[0.1, 0.1, 0.1], [4.2, 2.2, 4.2], [1, 3.0, 4.2], [2.7, 4.1, 1]])
+    #points = np.array([[0.1, 0.1, 0.1], [4.2, 2.2, 4.2], [1, 3.0, 4.2], [2.7, 4.1, 1]])
+    points = np.array([[0.9, 0.7, 0.7], [3.9, 2.8, 2.2], [1, 2, 3], [4, 4, 3], [3.5, 1.5, 4]])
 
-    delu, superTetra = triangulate(points, removeSuper = False, superSize = 10)
+    
 
+    delu, verts, superTetra = triangulate(points, superSize = SUPER_SIZE)
     voro = voronoi(delu, superTetra)
+
+    # Not required. We don't need to remove the superTetrahedron because we can filter it during rendering.
+    #remove_super(delu, verts, superTetra)
+
 
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(points[:,0], points[:,1], points[:,2])
 
-    #plot_delu(delu, ax)
+    plot_delu(delu, SUPER_SIZE, ax)
 
-    plot_voro_lines(voro, ax)
-    for poly in voro:
-        for a, b in poly.lines:
-            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
-        
+    #plot_voro_lines(voro, ax)
+
     ax.set_xlim(min(points[:,0]), max(points[:,0]))
     ax.set_ylim(min(points[:,1]), max(points[:,1]))
     ax.set_zlim(min(points[:,2]), max(points[:,2]))
