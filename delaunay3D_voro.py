@@ -57,7 +57,11 @@ class Tetrahedron:
         for v in self.vert:
             r += "{:>14} ".format(str(v))
         return r
+
     # Returns neighboring triangles set. (All triangles that share an edge with this one)
+    # NOTE: Because we did not implement this in 3d, we end up doing brute force for finding bat tetrahedrons
+    # This essentially means our actual implementation is N^2 for the 3D implementation.
+    # By implementing this we can do the expected NlogN.
     # def neighbors(self):
     #     # TODO: 3d
     #     # PERF: can be optimized
@@ -105,10 +109,10 @@ def triangulate(points, superSize = 50, removeSuper = False):
     
     # super polyhedron
     d = superSize
-    verts.append(Vertex([d, 0, 0]))
-    verts.append(Vertex([0, d, 0]))
-    verts.append(Vertex([0, 0, d]))
-    verts.append(Vertex([0, 0, 0]))
+    verts.append(Vertex([ d, -0, -0]))
+    verts.append(Vertex([-0,  d, -0]))
+    verts.append(Vertex([-0, -0,  d]))
+    verts.append(Vertex([-0, -0, -0]))
 
     superTetra = Tetrahedron(verts[-4], verts[-3], verts[-2], verts[-1])
     delaunay = set()
@@ -131,18 +135,7 @@ def triangulate(points, superSize = 50, removeSuper = False):
         for face in polyhedron:
             delaunay.add(Tetrahedron(face.vert[0], face.vert[1], face.vert[2], vtx))
 
-    return (delaunay, verts, superTetra)
-
-
-def remove_super(delaunay, verts, superTetra):
-    superTetras = set()
-    for vert in verts[-4:]:
-        for tetr in vert.adj:
-            superTetras.add(tetr)
-    
-    for tetra in superTetras:
-        delaunay.remove(tetra)
-
+    return delaunay
 
 #
 # Voronoi
@@ -170,7 +163,7 @@ class Edge:
     def __hash__(self):
         return hash((self.vtx[0], self.vtx[1]))
 
-def voronoi(delaunay, superTetra):
+def voronoi(delaunay):
     edges = collections.defaultdict(Edge) # Unique delaunay edges
     
     for tetra in delaunay:
@@ -221,7 +214,7 @@ import math as m
 ## Driver
 ##
 
-def plot_delu(delu, superSize, ax):
+def plot_delu(delu, ax, superSize = 0, color = False):
     lines = []
     for tetra in delu:
         lines.append((tetra.vert[0].p, tetra.vert[1].p))
@@ -242,40 +235,60 @@ def plot_delu(delu, superSize, ax):
     else:
         lines_filtered = lines
     
-    for a, b in lines_filtered:
-        ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
 
-def plot_voro_lines(voro, ax):
-    for poly in voro:
-        for a, b in poly.lines:
+    if color: 
+        for a, b in lines_filtered:
+            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]], color="blue")
+    else:
+        for a, b in lines_filtered:
             ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
 
+def plot_voro_lines(voro, ax, superSize = 0, color=False):
+    lines = []
+    for poly in voro:
+        for a, b in poly.lines:
+            lines.append((a, b))
+    
+    if superSize > 0:
+        # Remove lines that have BOTH points on the super tetra, the unbound faces will get clipped at super tetra
+        isSuper = lambda coord : coord <= 0.001 or coord >= superSize - 0.001
+        lines_filtered = []
+        for p1, p2 in lines:
+            p1_super = isSuper(p1[0]) or isSuper(p1[1]) or isSuper(p1[2])
+            p2_super = isSuper(p2[0]) or isSuper(p2[1]) or isSuper(p2[2])
+            if not (p1_super and p2_super):
+                lines_filtered.append((p1,p2))
+    else:
+        lines_filtered = lines
+
+    if color: 
+        for a, b in lines_filtered:
+            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]], color="red")
+    else:
+        for a, b in lines_filtered:
+            ax.plot([a[0], b[0]], [a[1], b[1]], [a[2], b[2]])
     
     
 def main():
-    SUPER_SIZE = 15 # How big is the edge of the super tetrahedron. Depends on input set but not calculated automatically
-
-    #points = np.array([[0.1, 0.1, 0.1], [3.2, 1.4, 0.1] , [3.1, 5, 2], [2.7, 4.1, 1], [2.9, 1, 1.1], [1, 3, 3.4], [5, 5, 1], [4.6, 2.1, 4]])
-    #points = np.array([[0.1, 0.1, 0.1], [4.2, 2.2, 4.2], [1, 3.0, 4.2], [2.7, 4.1, 1]])
-    points = np.array([[0.9, 0.7, 0.7], [3.9, 2.8, 2.2], [1, 2, 3], [4, 4, 3], [3.5, 1.5, 4]])
-
+    SUPER_SIZE = 3 # How big is the edge of the super tetrahedron. Depends on input set but not calculated automatically
+    NUM_POINTS = 5
+    CUSTOM_SEED = 0
     
+    if CUSTOM_SEED != 0: 
+        np.random.seed(CUSTOM_SEED)
 
-    delu, verts, superTetra = triangulate(points, superSize = SUPER_SIZE)
-    voro = voronoi(delu, superTetra)
-
-    # Not required. We don't need to remove the superTetrahedron because we can filter it during rendering.
-    #remove_super(delu, verts, superTetra)
+    points = np.random.rand(NUM_POINTS, 3)
 
 
+    delu = triangulate(points, superSize = SUPER_SIZE)
+    voro = voronoi(delu)
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(points[:,0], points[:,1], points[:,2])
 
-    plot_delu(delu, SUPER_SIZE, ax)
-
-    #plot_voro_lines(voro, ax)
+    #plot_delu(delu, ax, SUPER_SIZE) # 3rd argument 0 disables culling of super tetra for both plot functions
+    plot_voro_lines(voro, ax, 0)
 
     ax.set_xlim(min(points[:,0]), max(points[:,0]))
     ax.set_ylim(min(points[:,1]), max(points[:,1]))

@@ -10,7 +10,7 @@ class Triangle:
         self.vert = [p0, p1, p2]
         for vert in self.vert:
             vert.adj.add(self)
-        self.updateCircum();
+        self.updateCircum()
 
     def updateCircum(self):
         ax = self.vert[0].p[0]; ay = self.vert[0].p[1]
@@ -83,14 +83,14 @@ def triangulate(points):
         verts.append(Vertex(p))
     
     # super triangle
-    verts.append(Vertex([1000, 0]))
-    verts.append(Vertex([0, 1000]))
-    verts.append(Vertex([0, 0]))
+    verts.append(Vertex([-500, -500]))
+    verts.append(Vertex([1000, -500]))
+    verts.append(Vertex([-500, 1000]))
 
     triangles = set()
     triangles.add(Triangle(verts[-3], verts[-2], verts[-1]))
 
-    for vtx in verts:
+    for vtx in verts[:-3]:
         # Find bad triangles, (all the triangles that vtx is inside of the circumcircle)
         bad = set(filter(lambda tri: (tri.vertexInCircum(vtx)), triangles))
 
@@ -140,8 +140,11 @@ def plot_tris(triangles):
         plt.gca().add_patch(t)
 
 def main():
-    points = [[0, 0], [3.2, 1.4], [3.1, 5], [2.7, 4.1], [2.9, 1], [1, 3], [5, 5], [4.6, 2.1]]
+    # Points expected to be in [0, 1) range
+    NUM_POINTS = 10
+    points = np.random.rand(NUM_POINTS, 2)
     
+
     triangles = triangulate(points)
 
     voro_edges = voronoi(triangles)
@@ -153,10 +156,13 @@ def main():
     fig, ax = plt.subplots()
     ax.add_collection(lc)
 
-    plt.xlim([-0.5,5.5])
-    plt.ylim([-0.5,5.5])
+    ax.scatter(*zip(*points))
+
+    plt.xlim([-0.1,1.1])
+    plt.ylim([-0.1,1.1])
 
     vor = sp.spatial.Voronoi(points)
+    # NOTE: this will not exactly match our plot limits so the result will not look exactly the same
     fig = sp.spatial.voronoi_plot_2d(vor)
 
     plt.show()
