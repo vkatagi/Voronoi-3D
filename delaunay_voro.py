@@ -1,3 +1,7 @@
+import sys
+if sys.version_info[0] < 3:
+    raise Exception("delaunay_voro.py requires Python 3.")
+
 import numpy as np
 
 class Vertex:
@@ -41,7 +45,7 @@ class Triangle:
             for adj in vtx.adj:
                 if adj is not self and self.sharesEdgeWith(adj):
                     result.add(adj)
-        return result;
+        return result
 
 class Edge:
     def __init__(self, p0, p1):
@@ -122,7 +126,7 @@ def voronoi(triangulation):
 ## Driver
 ##
 
-# imported later. these are only used for plotting & drawing
+# these are only used for plotting & drawing
 import scipy as sp
 import scipy.spatial
 import matplotlib.pyplot as plt
@@ -160,10 +164,14 @@ def main():
 
     plt.xlim([-0.1,1.1])
     plt.ylim([-0.1,1.1])
+    fig.canvas.set_window_title('Our Voronoi Implementation (using delaunay O(N log N))')
+
+
 
     vor = sp.spatial.Voronoi(points)
     # NOTE: this will not exactly match our plot limits so the result will not look exactly the same
     fig = sp.spatial.voronoi_plot_2d(vor)
+    fig.canvas.set_window_title('sp.spatial.Voronoi() for reference')
 
     plt.show()
     return

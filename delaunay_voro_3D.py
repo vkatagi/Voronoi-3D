@@ -1,4 +1,7 @@
 import numpy as np
+import sys
+if sys.version_info[0] < 3:
+    raise Exception("delaunay_voro_3D.py requires Python 3.")
 
 class Vertex:
     def __init__(self, p):
@@ -200,8 +203,6 @@ def voronoi(delaunay):
     return voro 
 
 # imports. these are only used for plotting & drawing
-import scipy as sp
-import scipy.spatial
 import matplotlib.pyplot as plt
 import matplotlib.collections
 from mpl_toolkits.mplot3d import Axes3D 
